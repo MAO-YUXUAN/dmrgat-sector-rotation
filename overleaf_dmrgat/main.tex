@@ -1,0 +1,376 @@
+\documentclass[12pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,bm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{setspace}
+\usepackage{caption}
+\usepackage{subcaption}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\onehalfspacing
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\newtheorem{assumption}{Assumption}
+\newtheorem{remark}{Remark}
+
+\title{\bf Designing Dynamic Multi-Relation Graph Attention Networks\\
+for Sector Rotation Forecasting}
+
+\author{
+Author One\thanks{School of Finance, University Name. Email: author@example.com.}
+\and
+Author Two\thanks{School of Data Science, University Name.}
+\and
+Author Three\thanks{Corresponding author.}
+}
+
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Sector rotation is a relative allocation problem in which investors compare industries rather than forecast a single asset in isolation. Conventional time-series and machine-learning models often ignore the fact that industries are connected through return co-movement, capital-flow synchronization, supply-chain exposure, and common macroeconomic drivers. This paper designs a Dynamic Multi-Relation Graph Attention Network (DMRGAT) for industry-level sector rotation forecasting in the Chinese A-share market. Each Shenwan level-1 industry is treated as a graph node, and the dynamic adjacency matrix is constructed by fusing rolling return correlation, rolling trading-amount similarity, and a static industry-prior graph. The fused edge weights are introduced directly into the graph attention score, allowing the model to learn neighbor importance under economically interpretable relation priors. The prediction target is the future 30-trading-day excess return of each industry over the CSI 300 benchmark, and the model is trained with a ranking-oriented loss that emphasizes cross-sectional ordering. Empirically, DMRGAT is evaluated on 15 core industries and compared with CNN and LSTM baselines. The results indicate that the proposed graph model generates a weak but positive out-of-sample ranking signal, while the non-graph baselines exhibit different trade-offs between point-forecast accuracy and ranking performance. The framework provides an interpretable research platform for dynamic industry relation modeling and ranking-based sector allocation.
+\end{abstract}
+
+\noindent \textbf{Keywords:} sector rotation; graph attention network; dynamic graph; multi-relation graph; RankIC; Chinese A-share market.
+
+\section{Introduction}
+
+Sector rotation forecasting is a central problem in quantitative investment and tactical asset allocation. In practice, investors rarely evaluate industries independently. Instead, they compare the relative attractiveness of different sectors as macroeconomic expectations, liquidity conditions, policy signals, and market sentiment evolve. When growth expectations improve, cyclical sectors may respond earlier and outperform the market; when risk aversion rises, defensive sectors may become relatively more resilient. Therefore, the objective of sector rotation is not simply to predict whether one industry will rise or fall. A more relevant task is to identify which industries are likely to outperform others over a given investment horizon.
+
+\paragraph{Background and motivation.}
+Industry returns are not generated in isolation. Sectors are linked by production chains, common demand shocks, capital-flow migration, policy exposure, and investor attention. A change in commodity prices may affect upstream resource sectors and downstream manufacturers simultaneously. Technology-sector sentiment may propagate across electronics, computers, and communications. Financial conditions may influence banks, non-bank financial institutions, real estate, and cyclical sectors through credit channels. These interactions suggest that industry rotation should be modeled as a relational forecasting problem rather than as a collection of independent time-series tasks.
+
+Recent machine-learning models provide flexible tools for return prediction, but many implementations still treat assets or industries as independent samples. Recurrent models such as LSTM capture temporal dependence, while convolutional models may learn local patterns in feature matrices. However, these architectures do not explicitly encode inter-industry relations. Graph neural networks provide a natural alternative by representing industries as nodes and their relations as edges. Yet a single static graph is often insufficient for financial markets because industry dependence is time-varying and heterogeneous. Some relations arise from short-term return co-movement, others from synchronized trading activity, and still others from stable economic linkages.
+
+This paper proposes a Dynamic Multi-Relation Graph Attention Network (DMRGAT) for sector rotation forecasting. The model constructs a fused industry graph from three relation channels: rolling return correlation, rolling similarity in trading-amount changes as a capital-flow proxy, and a static industry-prior graph based on economic linkage. The fused graph is then introduced into an edge-weighted graph attention mechanism. In this design, the attention score between two industries depends on both learned node representations and the corresponding graph edge weight. Thus, attention learning is adaptive but still guided by economically meaningful relation priors.
+
+\paragraph{Our contribution.}
+The contribution of this paper is fourfold. First, we formulate sector rotation as a dynamic graph-based cross-sectional forecasting problem rather than a set of independent industry predictions. Second, we construct a multi-relation industry graph that integrates return co-movement, capital-flow similarity, and static economic linkage. Third, we introduce an edge-weighted attention mechanism in which fused relation weights directly guide neighbor aggregation. Fourth, we align the learning objective with the investment purpose of sector rotation by using a ranking-oriented loss and evaluating the model with RankIC in addition to RMSE and MAE.
+
+The empirical study is implemented on 15 core Shenwan level-1 industries in the Chinese A-share market. The prediction target is the future 30-trading-day excess return over the CSI 300 benchmark. We compare DMRGAT with CNN and LSTM baselines under the same feature set, target definition, and chronological train-validation-test split. The comparison is not intended to claim that DMRGAT dominates every metric. Rather, it examines whether graph-based relational modeling provides a useful and interpretable framework for ranking-oriented sector allocation.
+
+\paragraph{Literature review.}
+This paper is related to three streams of research. The first stream uses recurrent or attention-based time-series models for financial prediction. LSTM models have been widely applied to stock and index forecasting because they can learn nonlinear temporal dependence \citep{hochreiter1997lstm,fischer2018deep}. Transformer-type models further extend attention-based sequence learning to long-horizon financial data \citep{vaswani2017attention}. These models provide useful temporal baselines, but they do not explicitly represent cross-sectional industry relations.
+
+The second stream applies graph neural networks to financial markets. GCN, GraphSAGE, and related architectures aggregate information through asset or firm relation networks \citep{kipf2017semi,hamilton2017inductive}. Financial applications show that graph structures can improve stock ranking, risk modeling, and relation-aware prediction \citep{feng2019temporal}. However, many graph models rely on static graphs or fixed aggregation weights.
+
+The third stream uses graph attention networks and multi-relation graphs. GAT assigns adaptive weights to neighboring nodes \citep{velickovic2018graph}, which is attractive for financial markets where asset influence is asymmetric and regime-dependent. Nevertheless, many existing financial GAT models do not jointly address dynamic relation construction, economically interpretable edge priors, and ranking-oriented optimization. The present study contributes to this gap by combining dynamic multi-relation graph construction, edge-weighted attention, and pairwise ranking loss in one sector-rotation framework.
+
+\paragraph{Organization.}
+The remainder of the paper is organized as follows. Section \ref{sec:design} presents the product design of the forecasting system, including problem setup, feature construction, target definition, and dynamic graph construction. Section \ref{sec:algorithm} develops the DMRGAT algorithm and training procedure. Section \ref{sec:theory} provides theoretical analysis of graph fusion, edge-weighted attention, ranking consistency, and optimization. Section \ref{sec:numerical} reports numerical examples and empirical results. Section \ref{sec:application} discusses investment application. Section \ref{sec:conclusion} concludes.
+
+\section{Product Design}
+\label{sec:design}
+
+This section defines the forecasting product that the model is designed to generate: a cross-sectional ranking signal for industry rotation. The terminology is intentionally close to financial product design. The model takes market data and industry relations as inputs and outputs predicted benchmark-relative excess returns that can be transformed into sector allocation signals.
+
+\subsection{Notations and Formal Definitions}
+
+Let the dynamic industry graph at trading date $t$ be denoted by
+\begin{equation}
+G_t=(V,E_t,A_t),
+\end{equation}
+where $V=\{v_1,\ldots,v_N\}$ is the set of industry nodes, $E_t$ is the time-varying edge set, and $A_t\in \mathbb{R}^{N\times N}$ is the fused weighted adjacency matrix. In the empirical implementation, $N=15$, corresponding to 15 core Shenwan level-1 industries.
+
+For industry $i$ at date $t$, the node feature vector is
+\begin{equation}
+\begin{aligned}
+x_{i,t}=\big[&
+\text{ret\_1d}_{i,t},\text{excess\_ret\_1d}_{i,t},
+\text{ret\_std\_5}_{i,t},\text{ret\_std\_20}_{i,t},\text{amount\_chg}_{i,t},\\
+&\text{amount\_z20}_{i,t},\text{mom\_5}_{i,t},\text{mom\_20}_{i,t},\text{ma\_gap}_{i,t},
+\text{ret\_rank\_pct}_{i,t},\\
+&\text{excess\_rank\_pct}_{i,t},\text{mom\_rank\_pct\_5}_{i,t},
+\text{mom\_rank\_pct\_20}_{i,t},\\
+&\text{amount\_rank\_pct}_{i,t},\text{vol\_rank\_pct}_{i,t}\big].
+\end{aligned}
+\end{equation}
+These variables summarize recent return, benchmark-relative performance, realized volatility, trading-amount dynamics, momentum, moving-average deviation, and cross-sectional percentile ranks.
+
+\subsection{Forecasting Target}
+
+The prediction target is the future $H$-day excess return over the benchmark:
+\begin{equation}
+y_{i,t}^{(H)}=R_{i,t:t+H}-R_{m,t:t+H},
+\end{equation}
+where $R_{i,t:t+H}$ is the future return of industry $i$ from $t$ to $t+H$, and $R_{m,t:t+H}$ is the corresponding return of the benchmark index. In the current implementation, $H=30$ and the benchmark is the CSI 300 index. The target is continuous rather than binary, making it suitable for ranking-based allocation.
+
+\subsection{Dynamic Multi-Relation Graph}
+
+Three relation matrices are introduced. The first is the rolling return-correlation graph:
+\begin{equation}
+C_{\mathrm{corr},t}(i,j)=
+\mathrm{Corr}\left(\text{ret\_1d}_{i,t-w+1:t},\text{ret\_1d}_{j,t-w+1:t}\right),
+\end{equation}
+where $w=20$ is the rolling window. The second is the fund-flow proxy graph based on trading-amount changes:
+\begin{equation}
+C_{\mathrm{fund},t}(i,j)=
+\mathrm{Corr}\left(\text{amount\_chg}_{i,t-w+1:t},\text{amount\_chg}_{j,t-w+1:t}\right).
+\end{equation}
+Both correlation matrices are transformed into nonnegative edge-strength matrices:
+\begin{equation}
+A_{\mathrm{corr},t}(i,j)=\frac{C_{\mathrm{corr},t}(i,j)+1}{2}, \qquad
+A_{\mathrm{fund},t}(i,j)=\frac{C_{\mathrm{fund},t}(i,j)+1}{2}.
+\end{equation}
+The third matrix, $A_{\mathrm{industry}}$, is a static industry-prior graph. Its entries equal one if two industries are economically related and zero otherwise.
+
+The final fused adjacency matrix is
+\begin{equation}
+A_t=0.45A_{\mathrm{corr},t}+0.25A_{\mathrm{industry}}+0.30A_{\mathrm{fund},t}.
+\label{eq:fusion}
+\end{equation}
+Since the coefficients are nonnegative and sum to one, the fused graph is a convex combination of the three relation channels. The implementation retains the top $k=8$ neighbors for each node to reduce noisy weak edges.
+
+\subsection{Differences from Non-Graph Designs}
+
+The product differs from a CNN or LSTM forecasting system in its use of relation information. A CNN treats the industry-feature matrix as a two-dimensional input and can learn local feature patterns. An LSTM uses historical sequences and can capture temporal dependence. DMRGAT instead treats sector rotation as a dynamic relational problem. Its output is still a vector of predicted excess returns, but the predictions are formed through graph-based information propagation.
+
+\section{Valuation and Algorithm}
+\label{sec:algorithm}
+
+This section describes how the DMRGAT model maps the dynamic graph state $(G_t,X_t)$ into predicted future excess returns. The word ``valuation'' is used in the broad sense of assigning a predictive value to each industry node.
+
+\subsection{Node Projection and Edge-Weighted Attention}
+
+The initial representation of node $i$ is
+\begin{equation}
+h_i^{(0)}=x_{i,t}.
+\end{equation}
+The raw feature vector is projected into a hidden space:
+\begin{equation}
+z_i=Wh_i^{(0)}.
+\end{equation}
+For each edge $(i,j)$, the edge-weighted attention score is computed as
+\begin{equation}
+e_{ij,t}=A_{ij,t}\cdot
+\mathrm{LeakyReLU}\left(a^\top[z_i\Vert z_j]\right),
+\label{eq:edgeattention}
+\end{equation}
+where $\Vert$ denotes concatenation. Compared with a vanilla GAT, equation \eqref{eq:edgeattention} incorporates the fused relation weight $A_{ij,t}$ directly into the attention score.
+
+The normalized attention coefficient is
+\begin{equation}
+\alpha_{ij,t}=\frac{\exp(e_{ij,t})}
+{\sum_{k\in \mathcal{N}_i}\exp(e_{ik,t})}.
+\end{equation}
+For the first layer, multi-head attention with $M=4$ heads is used:
+\begin{equation}
+h_i^{(1)}=
+\mathop{\mathrm{Concat}}_{m=1}^{4}
+\sigma\left(\sum_{j\in\mathcal{N}_i}\alpha_{ij,t}^{(m)}z_j^{(m)}\right).
+\end{equation}
+The second graph attention layer uses one head:
+\begin{equation}
+h_i^{(2)}=
+\sigma\left(\sum_{j\in\mathcal{N}_i}\alpha_{ij,t}^{(2)}W^{(2)}h_j^{(1)}\right).
+\end{equation}
+The final prediction is
+\begin{equation}
+\widehat{y}_{i,t}^{(30)}=W_oh_i^{(2)}.
+\end{equation}
+
+\subsection{Ranking-Oriented Training Objective}
+
+The pairwise ranking loss for one graph snapshot is
+\begin{equation}
+L_{\mathrm{rank}}
+=\mathrm{mean}_{i,j}\log\left(1+
+\exp\left(-(y_i-y_j)(\widehat{y}_i-\widehat{y}_j)\right)\right).
+\end{equation}
+The MSE component is
+\begin{equation}
+L_{\mathrm{mse}}=\frac{1}{N}\sum_{i=1}^{N}(\widehat{y}_i-y_i)^2.
+\end{equation}
+The implemented total loss is
+\begin{equation}
+L=4.0L_{\mathrm{rank}}+0.05L_{\mathrm{mse}}.
+\label{eq:loss}
+\end{equation}
+The large weight on $L_{\mathrm{rank}}$ reflects the ranking-oriented nature of sector allocation, while the small MSE term stabilizes the numerical scale of predictions.
+
+\subsection{Numerical Procedure}
+
+\begin{algorithm}[H]
+\caption{DMRGAT Training Procedure}
+\label{alg:dmrgat}
+\begin{algorithmic}[1]
+\State Construct node features $X_t$ for all valid trading dates.
+\State Build $A_{\mathrm{corr},t}$ and $A_{\mathrm{fund},t}$ from rolling windows.
+\State Fuse the dynamic graph using equation \eqref{eq:fusion}.
+\State Split graph snapshots chronologically into training, validation, and test sets.
+\State Initialize DMRGAT parameters $\theta$.
+\For{epoch $=1,\ldots,T$}
+    \For{each training graph $G_t$}
+        \State Compute predictions $\widehat{y}_{t}^{(30)}=f(G_t,X_t;\theta)$.
+        \State Compute $L=4.0L_{\mathrm{rank}}+0.05L_{\mathrm{mse}}$.
+        \State Update parameters using Adam.
+    \EndFor
+    \State Evaluate validation RankIC.
+    \State Apply early stopping if validation RankIC does not improve.
+\EndFor
+\State Report train, validation, and test RMSE, MAE, IC, and RankIC.
+\end{algorithmic}
+\end{algorithm}
+
+\section{Theoretical Analysis}
+\label{sec:theory}
+
+\subsection{Convex Fusion Property}
+
+\begin{proposition}
+If $A_{\mathrm{corr},t}$, $A_{\mathrm{fund},t}$, and $A_{\mathrm{industry}}$ have entries in $[0,1]$, then the fused adjacency matrix in equation \eqref{eq:fusion} also has entries in $[0,1]$.
+\end{proposition}
+
+\begin{proof}
+For any pair $(i,j)$,
+\[
+A_{ij,t}=0.45A_{\mathrm{corr},t}(i,j)+0.25A_{\mathrm{industry}}(i,j)+0.30A_{\mathrm{fund},t}(i,j).
+\]
+Since the three coefficients are nonnegative and sum to one, $A_{ij,t}$ is a convex combination of three numbers in $[0,1]$. Hence $A_{ij,t}\in[0,1]$.
+\end{proof}
+
+The proposition implies that the fused graph remains numerically controlled and economically interpretable. It also prevents one relation channel from dominating purely through scale differences.
+
+\subsection{Edge-Weighted Attention as Prior-Guided Learning}
+
+Let $s_{ij,t}=\mathrm{LeakyReLU}(a^\top[z_i\Vert z_j])$ denote the raw neural attention score. Then $e_{ij,t}=A_{ij,t}s_{ij,t}$. Since $0\leq A_{ij,t}\leq 1$,
+\begin{equation}
+|e_{ij,t}|\leq |s_{ij,t}|.
+\end{equation}
+Thus, the graph prior cannot amplify the raw score beyond its original magnitude. It can only preserve or attenuate it. This mechanism reduces the chance that economically weak or noisy edges dominate attention purely because of random feature fluctuations.
+
+\subsection{Ranking Consistency}
+
+The pairwise term decreases when the realized and predicted spreads have the same sign. If $y_i>y_j$ and $\widehat{y}_i>\widehat{y}_j$, then $(y_i-y_j)(\widehat{y}_i-\widehat{y}_j)>0$, which lowers the ranking loss. If the ordering is reversed, the product is negative and the loss increases. Therefore, minimizing $L_{\mathrm{rank}}$ encourages cross-sectional ordering consistency, matching the objective of sector rotation.
+
+\subsection{Optimization and Local Convergence}
+
+The full DMRGAT model is nonlinear and non-convex, so global optimality cannot be guaranteed. However, the objective is differentiable almost everywhere with respect to model parameters. A generic gradient step can be written as
+\begin{equation}
+\theta_{k+1}=\theta_k-\eta\nabla_{\theta}L(\theta_k).
+\end{equation}
+Under bounded features, finite graph size, bounded edge weights, and a controlled learning rate, gradient-based optimization can approach an approximate stationary point:
+\begin{equation}
+\|\nabla_{\theta}L(\theta^\ast)\|\approx 0.
+\end{equation}
+This is the relevant practical notion of convergence for deep financial forecasting models.
+
+\section{Numerical Examples}
+\label{sec:numerical}
+
+\subsection{Data and Experimental Design}
+
+The empirical analysis uses daily Chinese market data. The benchmark is the CSI 300 index, and the industry universe contains 15 core Shenwan level-1 industries. After rolling-window construction and feature alignment, the final dataset contains 2346 valid graph snapshots. The chronological split uses 80\% of samples for training, 10\% for validation, and 10\% for testing.
+
+\begin{table}[H]
+\centering
+\caption{Simulation Settings}
+\begin{tabular}{ll}
+\toprule
+Item & Specification \\
+\midrule
+Industry universe & 15 core Shenwan level-1 industries \\
+Benchmark & CSI 300 index \\
+Forecast horizon & 30 trading days \\
+Rolling graph window & 20 trading days \\
+Number of graph snapshots & 2346 \\
+Train/validation/test split & 0.80 / 0.10 / 0.10 \\
+Fusion coefficients & 0.45 / 0.25 / 0.30 \\
+Top-$k$ neighbors & 8 \\
+Hidden dimension / heads & 32 / 4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Main Forecasting Results}
+
+\begin{table}[H]
+\centering
+\caption{DMRGAT Forecasting Performance}
+\begin{tabular}{lrrrr}
+\toprule
+Sample & RMSE & MAE & IC & RankIC \\
+\midrule
+Training & 0.1650 & 0.1459 & 0.0278 & 0.0344 \\
+Validation & 0.1682 & 0.1422 & 0.0722 & 0.0897 \\
+Test & 0.1829 & 0.1660 & 0.0139 & 0.0122 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The validation RankIC is positive, indicating that the model learns a useful ranking signal during model selection. The test RankIC is small but positive. This result should be interpreted cautiously: the model does not generate a strong trading signal, but it preserves a weak directionally meaningful cross-sectional ordering in the out-of-sample period.
+
+\subsection{Comparison with CNN and LSTM}
+
+\begin{table}[H]
+\centering
+\caption{Comparison with Non-Graph Baselines}
+\begin{tabular}{lrrr}
+\toprule
+Model & Test RMSE & Test MAE & Test RankIC \\
+\midrule
+DMRGAT & 0.1829 & 0.1660 & 0.0122 \\
+CNN & 0.1645 & 0.1282 & -0.0266 \\
+LSTM & 0.2582 & 0.2022 & 0.0082 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The CNN baseline achieves lower point-forecast error, but its test RankIC is negative. The LSTM baseline has weaker point accuracy and a test RankIC close to zero. DMRGAT is not the best model in terms of RMSE or MAE, but it produces a slightly positive ranking signal, which is more aligned with sector allocation.
+
+\subsection{Attention-Based Interpretation}
+
+The implementation exports attention heatmaps from the first graph attention layer. These heatmaps show how much information each industry receives from other industries when updating its representation. Because the first layer uses four heads, different heads may capture different relation patterns, such as cyclical co-movement, technology spillovers, or financial-sector linkages. The heatmaps should be interpreted as model diagnostics rather than causal evidence.
+
+\section{Application}
+\label{sec:application}
+
+The DMRGAT output can be used as a sector-rotation decision-support signal. At each date, industries are ranked by predicted future excess return. Top-ranked industries can be treated as overweight candidates, while bottom-ranked industries can be treated as underweight candidates. A practical allocation system may further apply volatility filters, liquidity constraints, turnover control, and benchmark-relative exposure limits.
+
+\begin{table}[H]
+\centering
+\caption{Signal Generation Procedure}
+\begin{tabular}{lll}
+\toprule
+Stage & Operation & Interpretation \\
+\midrule
+1 & Generate predictions & Estimate future 30-day excess return \\
+2 & Rank industries & Sort industries from high to low score \\
+3 & Select candidates & Identify overweight and underweight sectors \\
+4 & Apply risk filters & Control volatility, turnover, and concentration \\
+5 & Monitor stability & Recalibrate when RankIC decays \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The current model should not be used as a standalone trading engine. Its empirical signal is modest, and no transaction-cost-aware portfolio backtest is performed in this paper. Its main application value lies in ranking-based screening, relation-aware investment research, and interpretable sector allocation support.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+This paper designs a Dynamic Multi-Relation Graph Attention Network for sector rotation forecasting. The model treats industries as graph nodes, constructs a fused dynamic adjacency matrix from return correlation, fund-flow similarity, and industry-prior linkage, and introduces the fused edge weights into the attention score. The prediction target is the future 30-trading-day excess return over the CSI 300 benchmark, and the training objective emphasizes cross-sectional ranking.
+
+Empirical results on 15 core Shenwan level-1 industries indicate that DMRGAT generates a weak but positive out-of-sample ranking signal. Compared with CNN and LSTM baselines, the graph model is not uniformly superior in point-forecast error, but it provides a more investment-aligned ranking interpretation and an attention-based view of inter-industry dependence. Future work should incorporate macro-financial variables, temporal graph modules, robustness tests across market regimes, and transaction-cost-aware portfolio evaluation.
+
+\bibliographystyle{apalike}
+\bibliography{references}
+
+\end{document}

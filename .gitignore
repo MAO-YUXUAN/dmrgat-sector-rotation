@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Data and generated outputs
+data/raw/
+data/processed/
+*.csv
+*.xlsx
+
+# Manuscripts and external reference files
+*.docx
+*.pptx
+*.pdf
+!overleaf_dmrgat/*.tex
+!overleaf_dmrgat/*.bib
+
+# LaTeX build files
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.synctex.gz
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local scratch
+ssrn_3856569_layout.txt
+.npm-cache/
